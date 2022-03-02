@@ -8,7 +8,6 @@ package main
 
 import (
 	"log"
-	"math/rand"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -19,12 +18,20 @@ import (
 	"github.com/jshinonome/geek"
 )
 
-var qConnPool = make([]geek.QProcess, 2)
+var qConnPool geek.QConnPool
 
+const qServerPort = 1899
 const basePort = 1800
 
 func main() {
 	initQConnPool()
+	qEngine := geek.QEngine{
+		Port: qServerPort,
+		Auth: func(u, p string) error { return nil },
+		Pool: &qConnPool,
+	}
+	qConnPool.Serving()
+	go qEngine.Run()
 	r := gin.Default()
 	// curl http://localhost:8080/trade/a
 	r.GET("/trade/:sym", getTradeBySym)
@@ -32,7 +39,7 @@ func main() {
 }
 
 func initQConnPool() error {
-	for i := 0; i < len(qConnPool); i++ {
+	for i := 0; i < 2; i++ {
 		qExec := exec.Command("q", "asset/q/qprocess.q", "-p", strconv.Itoa(basePort+i))
 		qExec.SysProcAttr = &syscall.SysProcAttr{
 			Pdeathsig: syscall.SIGTERM,
@@ -44,7 +51,7 @@ func initQConnPool() error {
 		if err != nil {
 			return err
 		}
-		qConnPool[i] = q
+		qConnPool.Put(&q)
 	}
 	return nil
 }
@@ -57,9 +64,8 @@ func getTradeBySym(c *gin.Context) {
 	}{
 		"getTrade", sym,
 	}
-	i := rand.Intn(2)
 	r := make([]trade, 0)
-	err := qConnPool[i].Sync(&r, f)
+	err := qConnPool.Sync(&r, f)
 	if err != nil {
 		log.Println(err)
 	}
