@@ -7,7 +7,11 @@
 package main
 
 import (
+	"context"
+	"flag"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -16,17 +20,55 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jshinonome/geek"
+	"github.com/jshinonome/joker/api"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var qConnPool geek.QConnPool
 
-const qServerPort = 1899
+const qEnginePort = 1899
+const qGinPort = 1898
 const basePort = 1800
+
+var (
+	port = flag.Int("port", 1897, "The gRPC server port")
+)
+
+type dataServer struct {
+	api.UnimplementedDataServiceServer
+}
+
+func (s *dataServer) GetTrade(ctx context.Context, in *api.TradeRequest) (*api.TradeResponse, error) {
+	log.Println("Got a gRPC message")
+	sym := in.GetSym()
+	f := struct {
+		Api string
+		Sym string
+	}{
+		"getTrade", sym,
+	}
+	r := make([]trade, 0)
+	err := qConnPool.Sync(&r, f)
+	if err != nil {
+		log.Println(err)
+	}
+	trades := make([]*api.Trade, len(r), len(r))
+	for i, t := range r {
+		trades[i] = &api.Trade{
+			Time:  timestamppb.New(t.Time),
+			Sym:   t.Sym,
+			Price: t.Price,
+			Qty:   t.Qty,
+		}
+	}
+	return &api.TradeResponse{Trades: trades}, nil
+}
 
 func main() {
 	initQConnPool()
 	qEngine := geek.QEngine{
-		Port: qServerPort,
+		Port: qEnginePort,
 		Auth: func(u, p string) error { return nil },
 		Pool: &qConnPool,
 	}
@@ -35,7 +77,19 @@ func main() {
 	r := gin.Default()
 	// curl http://localhost:8080/trade/a
 	r.GET("/trade/:sym", getTradeBySym)
-	r.Run()
+	go r.Run(fmt.Sprintf(":%d", qGinPort))
+
+	flag.Parse()
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+	api.RegisterDataServiceServer(s, &dataServer{})
+	log.Printf("grpc server listening at %v", lis.Addr())
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 }
 
 func initQConnPool() error {

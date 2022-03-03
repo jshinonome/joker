@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+option go_package="./api";
+
+package api;
+import "google/protobuf/timestamp.proto";
+
+
+// The data service definition.
+service DataService {
+    rpc GetTrade (TradeRequest) returns (TradeResponse) {}
+}
+
+message TradeRequest {
+    string sym = 1;
+}
+
+message TradeResponse {
+    repeated Trade trades = 1;
+}
+
+message Trade{
+    google.protobuf.Timestamp time = 1;
+    string sym = 2;
+    double price = 3;
+    int64 qty = 4;
+}

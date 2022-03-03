@@ -1,0 +1,1 @@
+python -m grpc_tools.protoc -Iapi/. --python_out=pyclient --grpc_python_out=pyclient api/data.proto
