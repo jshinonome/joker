@@ -39,6 +39,7 @@ type dataServer struct {
 	api.UnimplementedDataServiceServer
 }
 
+// python ./pyclient/main.py
 func (s *dataServer) GetTrade(ctx context.Context, in *api.TradeRequest) (*api.TradeResponse, error) {
 	log.Println("Got a gRPC message")
 	sym := in.GetSym()
@@ -53,7 +54,7 @@ func (s *dataServer) GetTrade(ctx context.Context, in *api.TradeRequest) (*api.T
 	if err != nil {
 		log.Println(err)
 	}
-	trades := make([]*api.Trade, len(r), len(r))
+	trades := make([]*api.Trade, len(r))
 	for i, t := range r {
 		trades[i] = &api.Trade{
 			Time:  timestamppb.New(t.Time),
@@ -75,7 +76,7 @@ func main() {
 	qConnPool.Serving()
 	go qEngine.Run()
 	r := gin.Default()
-	// curl http://localhost:8080/trade/a
+	// curl http://localhost:1898/trade/a
 	r.GET("/trade/:sym", getTradeBySym)
 	go r.Run(fmt.Sprintf(":%d", qGinPort))
 
