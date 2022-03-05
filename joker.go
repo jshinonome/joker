@@ -27,12 +27,11 @@ import (
 
 var qConnPool geek.QConnPool
 
-const qEnginePort = 1899
-const qGinPort = 1898
-const basePort = 1800
-
 var (
-	port = flag.Int("port", 1897, "The gRPC server port")
+	basePort    = flag.Int("basePort", 1800, "The base q process port")
+	gRPCPort    = flag.Int("gRPCPort", 1897, "The gRPC server port")
+	qGinPort    = flag.Int("qGinPort", 1898, "The q gin server port")
+	qEnginePort = flag.Int("qEnginePort", 1899, "The q engine port")
 )
 
 type dataServer struct {
@@ -67,9 +66,10 @@ func (s *dataServer) GetTrade(ctx context.Context, in *api.TradeRequest) (*api.T
 }
 
 func main() {
+	flag.Parse()
 	initQConnPool()
 	qEngine := geek.QEngine{
-		Port: qEnginePort,
+		Port: *qEnginePort,
 		Auth: func(u, p string) error { return nil },
 		Pool: &qConnPool,
 	}
@@ -80,8 +80,7 @@ func main() {
 	r.GET("/trade/:sym", getTradeBySym)
 	go r.Run(fmt.Sprintf(":%d", qGinPort))
 
-	flag.Parse()
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *gRPCPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -95,13 +94,13 @@ func main() {
 
 func initQConnPool() error {
 	for i := 0; i < 2; i++ {
-		qExec := exec.Command("q", "asset/q/qprocess.q", "-p", strconv.Itoa(basePort+i))
+		qExec := exec.Command("q", "asset/q/qprocess.q", "-p", strconv.Itoa(*basePort+i))
 		qExec.SysProcAttr = &syscall.SysProcAttr{
 			Pdeathsig: syscall.SIGTERM,
 		}
 		qExec.Start()
 		time.Sleep(1 * time.Second)
-		q := geek.QProcess{Port: basePort + i}
+		q := geek.QProcess{Port: *basePort + i}
 		err := q.Dial()
 		if err != nil {
 			return err
