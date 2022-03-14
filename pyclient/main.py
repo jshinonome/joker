@@ -25,7 +25,8 @@ def run():
     # NOTE(gRPC Python Team): .close() is possible on a channel and should be
     # used in circumstances in which the with statement does not fit the needs
     # of the code.
-    with grpc.insecure_channel("localhost:1897") as channel:
+    options = [("grpc.max_receive_message_length", 128 * 1024 * 1024)]
+    with grpc.insecure_channel("localhost:1897", options=options) as channel:
         stub = data_pb2_grpc.DataServiceStub(channel)
         response = stub.GetTrade(data_pb2.TradeRequest(sym="a"))
     for trade in response.trades:

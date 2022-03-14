@@ -25,7 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-var qConnPool geek.QConnPool
+var qConnPool = geek.NewConnPool()
 
 var (
 	basePort    = flag.Int("basePort", 1800, "The base q process port")
@@ -41,6 +41,10 @@ type dataServer struct {
 // python ./pyclient/main.py
 func (s *dataServer) GetTrade(ctx context.Context, in *api.TradeRequest) (*api.TradeResponse, error) {
 	log.Println("Got a gRPC message")
+	start := time.Now()
+	defer func() {
+		log.Printf("[GRPC] %v", time.Since(start))
+	}()
 	sym := in.GetSym()
 	f := struct {
 		Api string
@@ -68,17 +72,18 @@ func (s *dataServer) GetTrade(ctx context.Context, in *api.TradeRequest) (*api.T
 func main() {
 	flag.Parse()
 	initQConnPool()
-	qEngine := geek.QEngine{
+	qEngine := geek.Engine{
 		Port: *qEnginePort,
 		Auth: func(u, p string) error { return nil },
-		Pool: &qConnPool,
+		Pool: qConnPool,
 	}
 	qConnPool.Serving()
+	log.Printf("geek engine listening at %v", qEngine.Port)
 	go qEngine.Run()
 	r := gin.Default()
 	// curl http://localhost:1898/trade/a
 	r.GET("/trade/:sym", getTradeBySym)
-	go r.Run(fmt.Sprintf(":%d", qGinPort))
+	go r.Run(fmt.Sprintf(":%d", *qGinPort))
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *gRPCPort))
 	if err != nil {
@@ -94,7 +99,7 @@ func main() {
 
 func initQConnPool() error {
 	for i := 0; i < 2; i++ {
-		qExec := exec.Command("q", "asset/q/qprocess.q", "-p", strconv.Itoa(*basePort+i))
+		qExec := exec.Command("q", "q/qprocess.q", "-p", strconv.Itoa(*basePort+i))
 		qExec.SysProcAttr = &syscall.SysProcAttr{
 			Pdeathsig: syscall.SIGTERM,
 		}
