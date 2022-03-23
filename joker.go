@@ -34,39 +34,11 @@ var (
 	qEnginePort = flag.Int("qEnginePort", 1899, "The q engine port")
 )
 
-type dataServer struct {
-	api.UnimplementedDataServiceServer
-}
-
-// python ./pyclient/main.py
-func (s *dataServer) GetTrade(ctx context.Context, in *api.TradeRequest) (*api.TradeResponse, error) {
-	log.Println("Got a gRPC message")
-	start := time.Now()
-	defer func() {
-		log.Printf("[GRPC] %v", time.Since(start))
-	}()
-	sym := in.GetSym()
-	f := struct {
-		Api string
-		Sym string
-	}{
-		"getTrade", sym,
-	}
-	r := make([]trade, 0)
-	err := qConnPool.Sync(&r, f)
-	if err != nil {
-		log.Println(err)
-	}
-	trades := make([]*api.Trade, len(r))
-	for i, t := range r {
-		trades[i] = &api.Trade{
-			Time:  timestamppb.New(t.Time),
-			Sym:   t.Sym,
-			Price: t.Price,
-			Qty:   t.Qty,
-		}
-	}
-	return &api.TradeResponse{Trades: trades}, nil
+type trade struct {
+	Time  time.Time `json:"time" k:"time"`
+	Sym   string    `json:"sym" k:"sym"`
+	Price float64   `json:"price" k:"price"`
+	Qty   int64     `json:"qty" k:"qty"`
 }
 
 func main() {
@@ -79,12 +51,14 @@ func main() {
 	}
 	qConnPool.Serving()
 	log.Printf("geek engine listening at %v", qEngine.Port)
+
+	// `::1899 `getTrade`a
 	go qEngine.Run()
 	r := gin.Default()
-	// curl http://localhost:1898/trade/a
 	r.GET("/trade/:sym", getTradeBySym)
+	// curl http://localhost:1898/trade/a
 	go r.Run(fmt.Sprintf(":%d", *qGinPort))
-
+	// python ./pyclient/main.py
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *gRPCPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -131,9 +105,36 @@ func getTradeBySym(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, r)
 }
 
-type trade struct {
-	Time  time.Time `json:"time" k:"time"`
-	Sym   string    `json:"sym" k:"sym"`
-	Price float64   `json:"price" k:"price"`
-	Qty   int64     `json:"qty" k:"qty"`
+type dataServer struct {
+	api.UnimplementedDataServiceServer
+}
+
+func (s *dataServer) GetTrade(ctx context.Context, in *api.TradeRequest) (*api.TradeResponse, error) {
+	log.Println("Got a gRPC message")
+	start := time.Now()
+	defer func() {
+		log.Printf("[GRPC] %v", time.Since(start))
+	}()
+	sym := in.GetSym()
+	f := struct {
+		Api string
+		Sym string
+	}{
+		"getTrade", sym,
+	}
+	r := make([]trade, 0)
+	err := qConnPool.Sync(&r, f)
+	if err != nil {
+		log.Println(err)
+	}
+	trades := make([]*api.Trade, len(r))
+	for i, t := range r {
+		trades[i] = &api.Trade{
+			Time:  timestamppb.New(t.Time),
+			Sym:   t.Sym,
+			Price: t.Price,
+			Qty:   t.Qty,
+		}
+	}
+	return &api.TradeResponse{Trades: trades}, nil
 }
