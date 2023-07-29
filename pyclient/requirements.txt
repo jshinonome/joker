@@ -1,8 +1,8 @@
 black==22.1.0
 certifi==2021.10.8
 click==8.0.4
-grpcio==1.44.0
-grpcio-tools==1.44.0
+grpcio>=1.56.2
+grpcio-tools>=1.56.2
 mypy-extensions==0.4.3
 pathspec==0.9.0
 platformdirs==2.5.1
